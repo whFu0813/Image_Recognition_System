@@ -1,8 +1,9 @@
 import sys
 from PyQt5.QtWidgets import (
-    QApplication, QWidget, QLabel, QPushButton, QVBoxLayout,
-    QFileDialog, QHBoxLayout, QMessageBox
+    QWidget, QLabel, QPushButton, QVBoxLayout,
+    QFileDialog, QHBoxLayout, QMessageBox, QScrollArea, QSplitter, QSizePolicy
 )
+from PyQt5.QtCore import Qt
 from core import file_io, segmentation, recognition_edit
 from gui.ui_utils import cv2_to_qpixmap
 import cv2
@@ -11,7 +12,7 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("图像识别系统")
-        self.setFixedSize(1000, 600)
+        self.resize(1200, 800)
 
         self.image = None
         self.mask = None
@@ -20,6 +21,28 @@ class MainWindow(QWidget):
         self.image_label = QLabel("原图")
         self.mask_label = QLabel("Mask图")
         self.result_label = QLabel("处理结果")
+
+        for label in (self.image_label, self.mask_label, self.result_label):
+            label.setAlignment(Qt.AlignCenter)
+            label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+            # 使用滚动区域包裹图片标签
+        scroll_image = QScrollArea()
+        scroll_image.setWidgetResizable(True)
+        scroll_image.setWidget(self.image_label)
+
+        scroll_mask = QScrollArea()
+        scroll_mask.setWidgetResizable(True)
+        scroll_mask.setWidget(self.mask_label)
+
+        scroll_result = QScrollArea()
+        scroll_result.setWidgetResizable(True)
+        scroll_result.setWidget(self.result_label)
+
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.addWidget(scroll_image)
+        splitter.addWidget(scroll_mask)
+        splitter.addWidget(scroll_result)
 
         self.btn_open = QPushButton("打开图像")
         self.btn_segment = QPushButton("阈值分割+抠图")
@@ -31,21 +54,13 @@ class MainWindow(QWidget):
         self.btn_edit.clicked.connect(self.edit_target)
         self.btn_save.clicked.connect(self.save_result)
 
-        layout = QVBoxLayout()
         btn_layout = QHBoxLayout()
-        img_layout = QHBoxLayout()
+        for btn in [self.btn_open, self.btn_segment, self.btn_edit, self.btn_save]:
+            btn_layout.addWidget(btn)
 
-        btn_layout.addWidget(self.btn_open)
-        btn_layout.addWidget(self.btn_segment)
-        btn_layout.addWidget(self.btn_edit)
-        btn_layout.addWidget(self.btn_save)
-
-        img_layout.addWidget(self.image_label)
-        img_layout.addWidget(self.mask_label)
-        img_layout.addWidget(self.result_label)
-
+        layout = QVBoxLayout()
         layout.addLayout(btn_layout)
-        layout.addLayout(img_layout)
+        layout.addWidget(splitter)
 
         self.setLayout(layout)
 
