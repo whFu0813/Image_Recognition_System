@@ -1,6 +1,6 @@
 import sys
 from PyQt5.QtWidgets import (
-    QWidget, QLabel, QPushButton, QVBoxLayout,
+    QWidget, QLabel, QPushButton, QVBoxLayout, QComboBox, QSlider,
     QFileDialog, QHBoxLayout, QMessageBox, QScrollArea, QSplitter, QSizePolicy
 )
 from PyQt5.QtCore import Qt
@@ -26,7 +26,7 @@ class MainWindow(QWidget):
             label.setAlignment(Qt.AlignCenter)
             label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-            # 使用滚动区域包裹图片标签
+        # 使用滚动区域包裹图片标签
         scroll_image = QScrollArea()
         scroll_image.setWidgetResizable(True)
         scroll_image.setWidget(self.image_label)
@@ -48,19 +48,40 @@ class MainWindow(QWidget):
         self.btn_segment = QPushButton("阈值分割+抠图")
         self.btn_edit = QPushButton("编辑目标")
         self.btn_save = QPushButton("保存结果")
+        self.btn_morph = QPushButton("应用形态学处理")
 
         self.btn_open.clicked.connect(self.open_image)
         self.btn_segment.clicked.connect(self.segment_and_mask)
         self.btn_edit.clicked.connect(self.edit_target)
         self.btn_save.clicked.connect(self.save_result)
+        self.btn_morph.clicked.connect(self.apply_morphology)
+
+        self.morph_label = QLabel("形态学处理：")
+        self.morph_combo = QComboBox()
+        self.morph_combo.addItems(["腐蚀", "膨胀", "开运算", "闭运算"])
+
+        self.kernel_slider = QSlider(Qt.Horizontal)
+        self.kernel_slider.setMinimum(1)
+        self.kernel_slider.setMaximum(21)
+        self.kernel_slider.setValue(3)
+        self.kernel_slider.setTickInterval(2)
+        self.kernel_slider.setTickPosition(QSlider.TicksBelow)
 
         btn_layout = QHBoxLayout()
         for btn in [self.btn_open, self.btn_segment, self.btn_edit, self.btn_save]:
             btn_layout.addWidget(btn)
 
+        morph_layout = QHBoxLayout()
+        morph_layout.addWidget(self.morph_label)
+        morph_layout.addWidget(self.morph_combo)
+        morph_layout.addWidget(QLabel("核大小"))
+        morph_layout.addWidget(self.kernel_slider)
+        morph_layout.addWidget(self.btn_morph)
+
         layout = QVBoxLayout()
         layout.addLayout(btn_layout)
         layout.addWidget(splitter)
+        layout.addLayout(morph_layout)
 
         self.setLayout(layout)
 
@@ -95,3 +116,32 @@ class MainWindow(QWidget):
         if file_path:
             file_io.save_image(file_path, self.result)
             QMessageBox.information(self, "保存成功", "图像已保存")
+
+    def apply_morphology(self):
+        if self.image is None:
+            QMessageBox.warning(self, "提示", "请先加载图像")
+            return
+
+        method = self.morph_combo.currentText()
+        ksize = self.kernel_slider.value()
+        if ksize % 2 == 0:
+            ksize += 1
+
+        binary = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
+        _, binary = cv2.threshold(binary, 127, 255, cv2.THRESH_BINARY)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (ksize, ksize))
+
+        if method == "腐蚀":
+            result = cv2.erode(binary, kernel)
+        elif method == "膨胀":
+            result = cv2.dilate(binary, kernel)
+        elif method == "开运算":
+            result = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+        elif method == "闭运算":
+            result = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+        else:
+            result = binary
+
+        morph_result = cv2.cvtColor(result, cv2.COLOR_GRAY2BGR)
+        self.result = morph_result
+        self.result_label.setPixmap(cv2_to_qpixmap(morph_result))
