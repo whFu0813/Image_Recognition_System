@@ -17,6 +17,7 @@ class MainWindow(QWidget):
         self.image = None
         self.mask = None
         self.result = None
+        self.latest_binary = None  # 用于编辑阶段的mask/分割结果
 
         self.image_label = QLabel("原图")
         self.mask_label = QLabel("Mask图")
@@ -49,12 +50,16 @@ class MainWindow(QWidget):
         self.btn_edit = QPushButton("编辑目标")
         self.btn_save = QPushButton("保存结果")
         self.btn_morph = QPushButton("应用形态学处理")
+        self.btn_edge = QPushButton("边缘检测")
+        self.btn_region = QPushButton("区域分割")
 
         self.btn_open.clicked.connect(self.open_image)
         self.btn_segment.clicked.connect(self.segment_and_mask)
         self.btn_edit.clicked.connect(self.edit_target)
         self.btn_save.clicked.connect(self.save_result)
         self.btn_morph.clicked.connect(self.apply_morphology)
+        self.btn_edge.clicked.connect(self.edge_detection)
+        self.btn_region.clicked.connect(self.region_segmentation)
 
         self.morph_label = QLabel("形态学处理：")
         self.morph_combo = QComboBox()
@@ -68,7 +73,8 @@ class MainWindow(QWidget):
         self.kernel_slider.setTickPosition(QSlider.TicksBelow)
 
         btn_layout = QHBoxLayout()
-        for btn in [self.btn_open, self.btn_segment, self.btn_edit, self.btn_save]:
+        for btn in [self.btn_open, self.btn_segment,self.btn_edge, self.btn_region,
+                    self.btn_edit, self.btn_save]:
             btn_layout.addWidget(btn)
 
         morph_layout = QHBoxLayout()
@@ -97,14 +103,16 @@ class MainWindow(QWidget):
             return
         binary = segmentation.threshold_segmentation(self.image, 127)
         binary = recognition_edit.refine_segmentation(binary)
+        self.latest_binary = binary
+
         self.mask = recognition_edit.create_mask_image(binary)
         self.mask_label.setPixmap(cv2_to_qpixmap(self.mask))
 
     def edit_target(self):
-        if self.image is None or self.mask is None:
+        if self.image is None or self.latest_binary is None:
             QMessageBox.warning(self, "提示", "请先生成Mask")
             return
-        binary = cv2.cvtColor(self.mask, cv2.COLOR_BGR2GRAY)
+        binary = self.latest_binary.copy()
         self.result = recognition_edit.edit_image(self.image, binary)
         self.result_label.setPixmap(cv2_to_qpixmap(self.result))
 
@@ -125,23 +133,59 @@ class MainWindow(QWidget):
         method = self.morph_combo.currentText()
         ksize = self.kernel_slider.value()
         if ksize % 2 == 0:
-            ksize += 1
+            ksize += 1  # 保证奇数核
 
-        binary = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
-        _, binary = cv2.threshold(binary, 127, 255, cv2.THRESH_BINARY)
+        gray = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
+        _, binary = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
+
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (ksize, ksize))
 
         if method == "腐蚀":
-            result = cv2.erode(binary, kernel)
+            processed = cv2.erode(binary, kernel)
         elif method == "膨胀":
-            result = cv2.dilate(binary, kernel)
+            processed = cv2.dilate(binary, kernel)
         elif method == "开运算":
-            result = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+            processed = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
         elif method == "闭运算":
-            result = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+            processed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
         else:
-            result = binary
+            processed = binary
 
-        morph_result = cv2.cvtColor(result, cv2.COLOR_GRAY2BGR)
-        self.result = morph_result
-        self.result_label.setPixmap(cv2_to_qpixmap(morph_result))
+        self.latest_binary = processed  # 👉 用于后续编辑
+        display = cv2.cvtColor(processed, cv2.COLOR_GRAY2BGR)
+        self.result = display
+        self.result_label.setPixmap(cv2_to_qpixmap(display))
+
+    def edge_detection(self):
+        if self.image is None:
+            QMessageBox.warning(self, "提示", "请先加载图像")
+            return
+
+        gray = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
+        grad_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+        grad_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+        grad = cv2.magnitude(grad_x, grad_y)
+        grad = cv2.convertScaleAbs(grad)
+
+        # 二值化边缘结果
+        _, binary = cv2.threshold(grad, 50, 255, cv2.THRESH_BINARY)
+
+        self.latest_binary = binary
+        display = cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
+        self.result = display
+        self.result_label.setPixmap(cv2_to_qpixmap(display))
+
+    def region_segmentation(self):
+        if self.image is None:
+            QMessageBox.warning(self, "提示", "请先加载图像")
+            return
+
+        gray = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
+        _, binary = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
+
+        num_labels, labels = cv2.connectedComponents(binary)
+
+        display = cv2.applyColorMap(((labels / num_labels) * 255).astype("uint8"), cv2.COLORMAP_JET)
+        self.latest_binary = binary
+        self.result = display
+        self.result_label.setPixmap(cv2_to_qpixmap(display))
