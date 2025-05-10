@@ -7,6 +7,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 from core import file_io, segmentation, recognition_edit
+from core.file_io import read_image
 from gui.ui_utils import cv2_to_qpixmap
 import cv2
 
@@ -20,10 +21,17 @@ class MainWindow(QWidget):
         self.mask = None
         self.result = None
         self.latest_binary = None  # 用于编辑阶段的mask/分割结果
+        self.drawing_mode = False  # 绘制蒙版模式
+        self.drawing_mask = None
+        self.last_x, self.last_y = None, None  # 绘制中存储上次鼠标坐标
 
         self.image_label = QLabel("原图")
         self.mask_label = QLabel("Mask图")
         self.result_label = QLabel("处理结果")
+
+        # 鼠标按下、移动事件
+        self.result_label.mousePressEvent = self.mouse_press_event
+        self.result_label.mouseMoveEvent = self.mouse_move_event
 
         for label in (self.image_label, self.mask_label, self.result_label):
             label.setAlignment(Qt.AlignCenter)
@@ -48,11 +56,13 @@ class MainWindow(QWidget):
         splitter.addWidget(scroll_result)
 
         self.btn_open = QPushButton("打开图像")
-        self.btn_edit = QPushButton("编辑目标")
+        self.btn_edit = QPushButton("应用目标抠图")
         self.btn_save = QPushButton("保存结果")
         self.btn_morph = QPushButton("应用形态学处理")
         self.btn_mask = QPushButton("生成 Mask")
-        self.btn_edit_mask = QPushButton("编辑 Mask")
+        self.btn_edit_mask = QPushButton("Mask处理")
+        self.btn_edit_bg = QPushButton("背景处理")
+        self.btn_confirm_draw = QPushButton("确认绘制")
 
         self.btn_open.clicked.connect(self.open_image)
         self.btn_edit.clicked.connect(self.edit_target)
@@ -60,6 +70,8 @@ class MainWindow(QWidget):
         self.btn_morph.clicked.connect(self.apply_morphology)
         self.btn_mask.clicked.connect(self.generate_mask)
         self.btn_edit_mask.clicked.connect(self.edit_mask)
+        self.btn_edit_bg.clicked.connect(self.edit_background)
+        self.btn_confirm_draw.clicked.connect(self.confirm_drawing)
 
         self.morph_label = QLabel("形态学处理：")
         self.morph_combo = QComboBox()
@@ -71,6 +83,9 @@ class MainWindow(QWidget):
         self.mask_edit_combo = QComboBox()
         self.mask_edit_combo.addItems(["反转 Mask", "去除小区域"])
 
+        self.bg_edit_combo = QComboBox()
+        self.bg_edit_combo.addItems(["替换背景", "模糊背景", "绘制蒙版"])
+
         self.kernel_slider = QSlider(Qt.Horizontal)
         self.kernel_slider.setMinimum(1)
         self.kernel_slider.setMaximum(21)
@@ -78,15 +93,25 @@ class MainWindow(QWidget):
         self.kernel_slider.setTickInterval(2)
         self.kernel_slider.setTickPosition(QSlider.TicksBelow)
 
-        btn_layout = QHBoxLayout()
+
+        # 基本操作行
+        top_btn_layout = QHBoxLayout()
         for btn in [self.btn_open,self.btn_edit, self.btn_save]:
-            btn_layout.addWidget(btn)
-        btn_layout.addWidget(QLabel("抠图方式："))
-        btn_layout.addWidget(self.segment_combo)
-        btn_layout.addWidget(self.btn_mask)
-        btn_layout.addWidget(QLabel("Mask 编辑："))
-        btn_layout.addWidget(self.mask_edit_combo)
-        btn_layout.addWidget(self.btn_edit_mask)
+            top_btn_layout.addWidget(btn)
+        top_btn_layout.addWidget(QLabel("抠图方式："))
+        top_btn_layout.addWidget(self.segment_combo)
+        top_btn_layout.addWidget(self.btn_mask)
+
+        # 编辑操作行
+        edit_btn_layout = QHBoxLayout()
+        edit_btn_layout.addWidget(QLabel("Mask 编辑："))
+        edit_btn_layout.addWidget(self.mask_edit_combo)
+        edit_btn_layout.addWidget(self.btn_edit_mask)
+        edit_btn_layout.addWidget(QLabel("目标编辑："))
+        edit_btn_layout.addWidget(self.bg_edit_combo)
+        edit_btn_layout.addWidget(self.btn_edit_bg)
+        edit_btn_layout.addWidget(self.btn_confirm_draw)
+        self.btn_confirm_draw.setEnabled(False)  # 初始不可点
 
         morph_layout = QHBoxLayout()
         morph_layout.addWidget(self.morph_label)
@@ -96,7 +121,8 @@ class MainWindow(QWidget):
         morph_layout.addWidget(self.btn_morph)
 
         layout = QVBoxLayout()
-        layout.addLayout(btn_layout)
+        layout.addLayout(top_btn_layout)
+        layout.addLayout(edit_btn_layout)
         layout.addWidget(splitter)
         layout.addLayout(morph_layout)
 
@@ -224,4 +250,124 @@ class MainWindow(QWidget):
         self.mask = recognition_edit.create_mask_image(binary)
         self.mask_label.setPixmap(cv2_to_qpixmap(self.mask))
 
+    def edit_background(self):
+        try:
+            if self.latest_binary is None:
+                QMessageBox.warning(self, "提示", "请先生成Mask图")
+                return
+
+            method = self.bg_edit_combo.currentText()
+            binary = self.latest_binary.copy()
+
+            if method == "替换背景":
+                file_path, _ = QFileDialog.getOpenFileName(self, "选择背景图片", "", "Images (*.png *.jpg *.bmp)")
+                if not file_path:
+                    return  # 用户取消选择
+
+                # 使用背景图替换背景
+                bg_img = read_image(file_path)  # 选择或加载背景图
+                bg_img_resized = cv2.resize(bg_img, (self.image.shape[1], self.image.shape[0]))
+                fg_mask = cv2.bitwise_and(self.image, self.image, mask=binary)
+                bg_mask = cv2.bitwise_and(bg_img_resized, bg_img_resized, mask=cv2.bitwise_not(binary))
+                result_img = cv2.add(fg_mask, bg_mask)
+
+                self.result = result_img
+                self.result_label.setPixmap(cv2_to_qpixmap(self.result))
+
+            elif method == "模糊背景":
+                # 对背景区域进行高斯模糊
+                blurred = cv2.GaussianBlur(self.image, (21, 21), 0)
+                fg_mask = cv2.bitwise_and(self.image, self.image, mask=binary)
+                bg_mask = cv2.bitwise_and(blurred, blurred, mask=cv2.bitwise_not(binary))
+                result_img = cv2.add(fg_mask, bg_mask)
+
+                self.result = result_img
+                self.result_label.setPixmap(cv2_to_qpixmap(self.result))
+
+            elif method == "绘制蒙版":
+                if self.image is None:
+                    QMessageBox.warning(self, "错误", "请先加载图像")
+                    return
+                if self.latest_binary is None:
+                    QMessageBox.warning(self, "错误", "请先生成初始抠图或Mask")
+                    return
+
+                self.drawing_mode = True
+                self.btn_confirm_draw.setEnabled(True)
+
+                # 初始化手绘蒙版
+                h, w = self.image.shape[:2]
+                self.drawing_mask = self.latest_binary.copy()  # 在已有mask上继续绘制
+                self.last_x = self.last_y = None
+
+                # 更新显示（可以让用户看到原图并准备绘制）
+                self.update_result_label()
+                QMessageBox.information(self, "提示", "请在图像上绘制前景区域，再点击“确认绘制”完成。")
+
+
+            else:
+                QMessageBox.warning(self, "错误", "未知背景编辑方法")
+                return
+
+        except Exception as e:
+            print("edit_background 函数出错：", e)
+
+    # 鼠标事件处理⬇
+    def map_to_image_coords(self, x, y):
+        """将 QLabel 上的坐标映射到图像坐标"""
+        label_width = self.result_label.width()
+        label_height = self.result_label.height()
+        img_height, img_width = self.image.shape[:2]
+
+        x_ratio = img_width / label_width
+        y_ratio = img_height / label_height
+
+        mapped_x = int(x * x_ratio)
+        mapped_y = int(y * y_ratio)
+        return mapped_x, mapped_y
+
+    def mouse_press_event(self, event):
+        if self.drawing_mode and event.button() == Qt.LeftButton:
+            x, y = self.map_to_image_coords(event.pos().x(), event.pos().y())
+            self.last_x, self.last_y = x, y
+
+    def mouse_move_event(self, event):
+        if self.drawing_mode and event.buttons() & Qt.LeftButton:
+            x, y = self.map_to_image_coords(event.pos().x(), event.pos().y())
+            if self.last_x is not None and self.last_y is not None:
+                # 在 mask 上画线
+                cv2.line(self.drawing_mask, (self.last_x, self.last_y), (x, y), 255, 10)
+                self.last_x, self.last_y = x, y
+
+                # 可视化叠加绘制结果
+                overlay = self.image.copy()
+                overlay[self.drawing_mask == 255] = [0, 255, 0]  # 绿色表示前景
+                self.result_label.setPixmap(cv2_to_qpixmap(overlay))
+
+    def update_result_label(self):
+        if self.image is None:
+            return
+
+        preview = self.image.copy()
+
+        # 如果在绘制状态，叠加红色 mask 可视化
+        if self.drawing_mode and self.drawing_mask is not None:
+            red_overlay = np.zeros_like(preview)
+            red_overlay[:, :, 2] = self.drawing_mask  # 将 mask 显示为红色通道
+            preview = cv2.addWeighted(preview, 1.0, red_overlay, 0.5, 0)
+
+        self.result_label.setPixmap(cv2_to_qpixmap(preview))
+
+    # 鼠标事件处理⬆
+
+    def confirm_drawing(self):
+        if self.drawing_mask is None:
+            QMessageBox.warning(self, "提示", "没有绘制任何内容")
+            return
+
+        self.latest_binary = self.drawing_mask.copy()
+        self.mask_label.setPixmap(cv2_to_qpixmap(self.latest_binary))
+        self.drawing_mode = False
+        self.btn_confirm_draw.setEnabled(False)
+        self.result_label.setText("已应用绘制的蒙版")
 
