@@ -52,12 +52,14 @@ class MainWindow(QWidget):
         self.btn_save = QPushButton("保存结果")
         self.btn_morph = QPushButton("应用形态学处理")
         self.btn_mask = QPushButton("生成 Mask")
+        self.btn_edit_mask = QPushButton("编辑 Mask")
 
         self.btn_open.clicked.connect(self.open_image)
         self.btn_edit.clicked.connect(self.edit_target)
         self.btn_save.clicked.connect(self.save_result)
         self.btn_morph.clicked.connect(self.apply_morphology)
         self.btn_mask.clicked.connect(self.generate_mask)
+        self.btn_edit_mask.clicked.connect(self.edit_mask)
 
         self.morph_label = QLabel("形态学处理：")
         self.morph_combo = QComboBox()
@@ -65,6 +67,9 @@ class MainWindow(QWidget):
 
         self.segment_combo = QComboBox()
         self.segment_combo.addItems(["阈值分割", "边缘检测", "区域分割"])
+
+        self.mask_edit_combo = QComboBox()
+        self.mask_edit_combo.addItems(["反转 Mask", "去除小区域"])
 
         self.kernel_slider = QSlider(Qt.Horizontal)
         self.kernel_slider.setMinimum(1)
@@ -79,6 +84,9 @@ class MainWindow(QWidget):
         btn_layout.addWidget(QLabel("抠图方式："))
         btn_layout.addWidget(self.segment_combo)
         btn_layout.addWidget(self.btn_mask)
+        btn_layout.addWidget(QLabel("Mask 编辑："))
+        btn_layout.addWidget(self.mask_edit_combo)
+        btn_layout.addWidget(self.btn_edit_mask)
 
         morph_layout = QHBoxLayout()
         morph_layout.addWidget(self.morph_label)
@@ -185,4 +193,35 @@ class MainWindow(QWidget):
         self.latest_binary = binary
         self.mask = recognition_edit.create_mask_image(binary)
         self.mask_label.setPixmap(cv2_to_qpixmap(self.mask))
+
+    def edit_mask(self):
+        if self.latest_binary is None:
+            QMessageBox.warning(self, "提示", "请先生成Mask图")
+            return
+
+        method = self.mask_edit_combo.currentText()
+        binary = self.latest_binary.copy()
+
+        if method == "反转 Mask":
+            binary = cv2.bitwise_not(binary)
+
+        elif method == "去除小区域":
+            # 连通域分析：保留最大区域
+            num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary)
+            sizes = stats[1:, cv2.CC_STAT_AREA]
+            if len(sizes) == 0:
+                QMessageBox.information(self, "提示", "未检测到目标区域")
+                return
+            max_label = 1 + np.argmax(sizes)
+            binary = np.uint8((labels == max_label) * 255)
+
+        else:
+            QMessageBox.warning(self, "错误", "未知编辑方法")
+            return
+
+        # 更新 latest_binary 和 mask 显示
+        self.latest_binary = binary
+        self.mask = recognition_edit.create_mask_image(binary)
+        self.mask_label.setPixmap(cv2_to_qpixmap(self.mask))
+
 
