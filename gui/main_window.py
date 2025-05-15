@@ -98,7 +98,7 @@ class MainWindow(QWidget):
         top_btn_layout = QHBoxLayout()
         for btn in [self.btn_open,self.btn_edit, self.btn_save]:
             top_btn_layout.addWidget(btn)
-        top_btn_layout.addWidget(QLabel("抠图方式："))
+        top_btn_layout.addWidget(QLabel("分割方式："))
         top_btn_layout.addWidget(self.segment_combo)
         top_btn_layout.addWidget(self.btn_mask)
 
@@ -275,9 +275,12 @@ class MainWindow(QWidget):
                 self.result_label.setPixmap(cv2_to_qpixmap(self.result))
 
             elif method == "模糊背景":
+                # 使用当前显示图像为基础（即 result 如果有，否则 image）
+                source_img = self.result.copy() if self.result is not None else self.image.copy()
+
                 # 对背景区域进行高斯模糊
-                blurred = cv2.GaussianBlur(self.image, (21, 21), 0)
-                fg_mask = cv2.bitwise_and(self.image, self.image, mask=binary)
+                blurred = cv2.GaussianBlur(source_img, (21, 21), 0)
+                fg_mask = cv2.bitwise_and(source_img, source_img, mask=binary)
                 bg_mask = cv2.bitwise_and(blurred, blurred, mask=cv2.bitwise_not(binary))
                 result_img = cv2.add(fg_mask, bg_mask)
 
