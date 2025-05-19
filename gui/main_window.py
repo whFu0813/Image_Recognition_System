@@ -56,26 +56,32 @@ class MainWindow(QWidget):
         splitter.addWidget(scroll_result)
 
         self.btn_open = QPushButton("打开图像")
-        self.btn_edit = QPushButton("应用目标抠图")
-        self.btn_save = QPushButton("保存结果")
-        self.btn_morph = QPushButton("应用形态学处理")
-        self.btn_mask = QPushButton("生成 Mask")
-        self.btn_edit_mask = QPushButton("Mask处理")
-        self.btn_edit_bg = QPushButton("背景处理")
-        self.btn_confirm_draw = QPushButton("确认绘制")
-
         self.btn_open.clicked.connect(self.open_image)
+        self.btn_edit = QPushButton("应用目标抠图")
         self.btn_edit.clicked.connect(self.edit_target)
+        self.btn_save = QPushButton("保存结果")
         self.btn_save.clicked.connect(self.save_result)
+        self.btn_morph = QPushButton("应用形态学处理")
         self.btn_morph.clicked.connect(self.apply_morphology)
+        self.btn_mask = QPushButton("生成 Mask")
         self.btn_mask.clicked.connect(self.generate_mask)
+        self.btn_edit_mask = QPushButton("Mask处理")
         self.btn_edit_mask.clicked.connect(self.edit_mask)
+        self.btn_edit_bg = QPushButton("背景处理")
         self.btn_edit_bg.clicked.connect(self.edit_background)
+        self.btn_confirm_draw = QPushButton("确认绘制")
         self.btn_confirm_draw.clicked.connect(self.confirm_drawing)
 
         self.morph_label = QLabel("形态学处理：")
         self.morph_combo = QComboBox()
         self.morph_combo.addItems(["腐蚀", "膨胀", "开运算", "闭运算"])
+
+        self.kernel_slider = QSlider(Qt.Horizontal)
+        self.kernel_slider.setMinimum(1)
+        self.kernel_slider.setMaximum(21)
+        self.kernel_slider.setValue(3)
+        self.kernel_slider.setTickInterval(2)
+        self.kernel_slider.setTickPosition(QSlider.TicksBelow)
 
         self.segment_combo = QComboBox()
         self.segment_combo.addItems(["阈值分割", "边缘检测", "区域分割"])
@@ -86,13 +92,9 @@ class MainWindow(QWidget):
         self.bg_edit_combo = QComboBox()
         self.bg_edit_combo.addItems(["替换背景", "模糊背景", "绘制蒙版"])
 
-        self.kernel_slider = QSlider(Qt.Horizontal)
-        self.kernel_slider.setMinimum(1)
-        self.kernel_slider.setMaximum(21)
-        self.kernel_slider.setValue(3)
-        self.kernel_slider.setTickInterval(2)
-        self.kernel_slider.setTickPosition(QSlider.TicksBelow)
-
+        self.display_mode_combo = QComboBox()
+        self.display_mode_combo.addItems(["分割结果显示", "Mask图"])
+        self.display_mode_combo.currentIndexChanged.connect(self.update_result_label)
 
         # 基本操作行
         top_btn_layout = QHBoxLayout()
@@ -104,6 +106,8 @@ class MainWindow(QWidget):
 
         # 编辑操作行
         edit_btn_layout = QHBoxLayout()
+        edit_btn_layout.addWidget(QLabel("显示方式："))
+        edit_btn_layout.addWidget(self.display_mode_combo)
         edit_btn_layout.addWidget(QLabel("Mask 编辑："))
         edit_btn_layout.addWidget(self.mask_edit_combo)
         edit_btn_layout.addWidget(self.btn_edit_mask)
@@ -219,6 +223,7 @@ class MainWindow(QWidget):
         self.latest_binary = binary
         self.mask = recognition_edit.create_mask_image(binary)
         self.mask_label.setPixmap(cv2_to_qpixmap(self.mask))
+        self.update_result_label()
 
     def edit_mask(self):
         if self.latest_binary is None:
@@ -249,6 +254,7 @@ class MainWindow(QWidget):
         self.latest_binary = binary
         self.mask = recognition_edit.create_mask_image(binary)
         self.mask_label.setPixmap(cv2_to_qpixmap(self.mask))
+        self.update_result_label()
 
     def edit_background(self):
         try:
@@ -353,13 +359,24 @@ class MainWindow(QWidget):
 
         preview = self.image.copy()
 
+        if self.display_mode_combo.currentText() == "分割结果显示":
+            if self.latest_binary is not None:
+                red_overlay = np.zeros_like(preview)
+                red_overlay[:, :, 2] = self.latest_binary  # 红色通道显示mask
+                preview = cv2.addWeighted(preview, 1.0, red_overlay, 0.5, 0)
+            self.mask_label.setPixmap(cv2_to_qpixmap(preview))
+        elif self.display_mode_combo.currentText() == "Mask图":
+            if self.latest_binary is not None:
+                preview = recognition_edit.create_mask_image(self.latest_binary)
+            self.mask_label.setPixmap(cv2_to_qpixmap(preview))
+
         # 如果在绘制状态，叠加红色 mask 可视化
         if self.drawing_mode and self.drawing_mask is not None:
             red_overlay = np.zeros_like(preview)
             red_overlay[:, :, 2] = self.drawing_mask  # 将 mask 显示为红色通道
             preview = cv2.addWeighted(preview, 1.0, red_overlay, 0.5, 0)
 
-        self.result_label.setPixmap(cv2_to_qpixmap(preview))
+            self.result_label.setPixmap(cv2_to_qpixmap(preview))
 
     # 鼠标事件处理⬆
 
@@ -373,4 +390,6 @@ class MainWindow(QWidget):
         self.drawing_mode = False
         self.btn_confirm_draw.setEnabled(False)
         self.result_label.setText("已应用绘制的蒙版")
+        self.update_result_label()
+
 
