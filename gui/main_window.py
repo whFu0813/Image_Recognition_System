@@ -71,6 +71,8 @@ class MainWindow(QWidget):
         self.btn_open.clicked.connect(self.open_image)
         self.btn_edit = QPushButton("应用目标抠图")
         self.btn_edit.clicked.connect(self.edit_target)
+        self.export_transparent_btn = QPushButton("导出透明背景图像")
+        self.export_transparent_btn.clicked.connect(self.export_transparent_result)
         self.btn_save = QPushButton("保存结果")
         self.btn_save.clicked.connect(self.save_result)
         self.btn_morph = QPushButton("应用形态学处理")
@@ -110,8 +112,10 @@ class MainWindow(QWidget):
 
         # 基本操作行
         top_btn_layout = QHBoxLayout()
-        for btn in [self.btn_open,self.btn_edit, self.btn_save]:
-            top_btn_layout.addWidget(btn)
+        top_btn_layout.addWidget(self.btn_open)
+        top_btn_layout.addWidget(self.btn_edit)
+        top_btn_layout.addWidget(self.export_transparent_btn)
+        top_btn_layout.addWidget(self.btn_save)
         top_btn_layout.addWidget(QLabel("分割方式："))
         top_btn_layout.addWidget(self.segment_combo)
         top_btn_layout.addWidget(self.btn_mask)
@@ -169,6 +173,24 @@ class MainWindow(QWidget):
         binary = self.latest_binary.copy()
         self.result = recognition_edit.edit_image(self.image, binary)
         self.result_label.setPixmap(cv2_to_qpixmap(self.result))
+
+    def export_transparent_result(self):
+        if self.image is None or self.latest_binary is None:
+            QMessageBox.warning(self, "提示", "请先生成Mask图")
+            return
+
+        # 构建透明图像
+        b, g, r = cv2.split(self.image)
+        alpha = self.latest_binary.copy()
+        rgba = cv2.merge((b, g, r, alpha))  # 形成 BGRA 图像
+
+        # 保存为 PNG
+        file_path, _ = QFileDialog.getSaveFileName(self, "保存透明背景图像", "", "PNG Files (*.png)")
+        if file_path:
+            if not file_path.lower().endswith(".png"):
+                file_path += ".png"
+            cv2.imwrite(file_path, rgba)
+            QMessageBox.information(self, "保存成功", "透明背景图像已保存为PNG")
 
     def save_result(self):
         if self.result is None:
