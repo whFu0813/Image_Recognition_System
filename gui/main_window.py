@@ -9,6 +9,8 @@ from PyQt5.QtCore import Qt
 from core import file_io, segmentation, recognition_edit
 from core.file_io import read_image
 from gui.ui_utils import cv2_to_qpixmap
+from gui.draw_mask_window import DrawMaskWindow
+
 import cv2
 
 class MainWindow(QWidget):
@@ -347,18 +349,17 @@ class MainWindow(QWidget):
                     QMessageBox.warning(self, "错误", "请先生成初始抠图或Mask")
                     return
 
-                self.drawing_mode = True
-                self.btn_confirm_draw.setEnabled(True)
+                # 弹出绘制窗口
+                def receive_updated_mask(new_mask):
+                    self.latest_binary = new_mask
+                    self.mask = recognition_edit.create_mask_image(new_mask)
+                    self.mask_label.setPixmap(cv2_to_qpixmap(self.mask))
+                    self.update_result_label()
+                    QMessageBox.information(self, "提示", "蒙版已更新")
 
-                # 初始化手绘蒙版
-                h, w = self.image.shape[:2]
-                self.drawing_mask = self.latest_binary.copy()  # 在已有mask上继续绘制
-                self.last_x = self.last_y = None
-
-                # 更新显示（可以让用户看到原图并准备绘制）
-                self.update_result_label()
-                QMessageBox.information(self, "提示", "请在图像上绘制前景区域，再点击“确认绘制”完成。")
-
+                draw_win = DrawMaskWindow(self.image, self.latest_binary, receive_updated_mask)
+                draw_win.setAttribute(Qt.WA_DeleteOnClose)  # 关闭后自动删除
+                draw_win.show()
 
             else:
                 QMessageBox.warning(self, "错误", "未知背景编辑方法")
