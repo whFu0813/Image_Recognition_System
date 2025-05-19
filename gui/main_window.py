@@ -46,14 +46,26 @@ class MainWindow(QWidget):
         scroll_mask.setWidgetResizable(True)
         scroll_mask.setWidget(self.mask_label)
 
+        # mask 区域下方添加显示方式选择
+        mask_area_widget = QWidget()
+        mask_area_layout = QVBoxLayout()
+        mask_area_layout.setContentsMargins(0, 0, 0, 0)
+        mask_area_layout.setSpacing(5)
+
+        # 原有的 mask_label 封装
+        mask_area_layout.addWidget(scroll_mask)
+
         scroll_result = QScrollArea()
         scroll_result.setWidgetResizable(True)
         scroll_result.setWidget(self.result_label)
 
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(scroll_image)
-        splitter.addWidget(scroll_mask)
+        splitter.addWidget(mask_area_widget)
         splitter.addWidget(scroll_result)
+        scroll_image.setMinimumWidth(530)
+        mask_area_widget.setMinimumWidth(540)
+        scroll_result.setMinimumWidth(530)
 
         self.btn_open = QPushButton("打开图像")
         self.btn_open.clicked.connect(self.open_image)
@@ -106,8 +118,6 @@ class MainWindow(QWidget):
 
         # 编辑操作行
         edit_btn_layout = QHBoxLayout()
-        edit_btn_layout.addWidget(QLabel("显示方式："))
-        edit_btn_layout.addWidget(self.display_mode_combo)
         edit_btn_layout.addWidget(QLabel("Mask 编辑："))
         edit_btn_layout.addWidget(self.mask_edit_combo)
         edit_btn_layout.addWidget(self.btn_edit_mask)
@@ -115,7 +125,21 @@ class MainWindow(QWidget):
         edit_btn_layout.addWidget(self.bg_edit_combo)
         edit_btn_layout.addWidget(self.btn_edit_bg)
         edit_btn_layout.addWidget(self.btn_confirm_draw)
+        #edit_btn_layout.addStretch()
         self.btn_confirm_draw.setEnabled(False)  # 初始不可点
+
+        # 显示方式选择器
+        display_mode_layout = QHBoxLayout()
+        display_mode_layout.setContentsMargins(0, 0, 0, 0)
+
+        display_mode_label = QLabel("显示方式：")
+        #display_mode_label.setFixedWidth(60)
+        display_mode_layout.addWidget(display_mode_label)
+        display_mode_layout.addWidget(self.display_mode_combo)
+        display_mode_layout.addStretch()
+
+        mask_area_layout.addLayout(display_mode_layout)
+        mask_area_widget.setLayout(mask_area_layout)
 
         morph_layout = QHBoxLayout()
         morph_layout.addWidget(self.morph_label)
