@@ -27,13 +27,16 @@ class MainWindow(QWidget):
         self.drawing_mask = None
         self.last_x, self.last_y = None, None  # 绘制中存储上次鼠标坐标
 
+        # 为实现贴纸添加的拖拽
+        self.dragging = False
+        self.drag_offset = (0, 0)
+        self.foreground = None  # 抠图目标区域
+        self.fg_mask = None  # 掩码
+        self.fg_position = (0, 0)
+
         self.image_label = QLabel("原图")
         self.mask_label = QLabel("Mask图")
         self.result_label = QLabel("处理结果")
-
-        # 鼠标按下、移动事件
-        self.result_label.mousePressEvent = self.mouse_press_event
-        self.result_label.mouseMoveEvent = self.mouse_move_event
 
         for label in (self.image_label, self.mask_label, self.result_label):
             label.setAlignment(Qt.AlignCenter)
@@ -85,8 +88,6 @@ class MainWindow(QWidget):
         self.btn_edit_mask.clicked.connect(self.edit_mask)
         self.btn_edit_bg = QPushButton("背景处理")
         self.btn_edit_bg.clicked.connect(self.edit_background)
-        self.btn_confirm_draw = QPushButton("确认绘制")
-        self.btn_confirm_draw.clicked.connect(self.confirm_drawing)
 
         self.morph_label = QLabel("形态学处理：")
         self.morph_combo = QComboBox()
@@ -130,16 +131,13 @@ class MainWindow(QWidget):
         edit_btn_layout.addWidget(QLabel("目标编辑："))
         edit_btn_layout.addWidget(self.bg_edit_combo)
         edit_btn_layout.addWidget(self.btn_edit_bg)
-        edit_btn_layout.addWidget(self.btn_confirm_draw)
-        #edit_btn_layout.addStretch()
-        self.btn_confirm_draw.setEnabled(False)  # 初始不可点
+        #edit_btn_layout.addStretch()   #让布局向左靠齐，空出右侧
 
         # 显示方式选择器
         display_mode_layout = QHBoxLayout()
         display_mode_layout.setContentsMargins(0, 0, 0, 0)
 
         display_mode_label = QLabel("显示方式：")
-        #display_mode_label.setFixedWidth(60)
         display_mode_layout.addWidget(display_mode_label)
         display_mode_layout.addWidget(self.display_mode_combo)
         display_mode_layout.addStretch()
@@ -368,38 +366,6 @@ class MainWindow(QWidget):
         except Exception as e:
             print("edit_background 函数出错：", e)
 
-    # 鼠标事件处理⬇
-    def map_to_image_coords(self, x, y):
-        """将 QLabel 上的坐标映射到图像坐标"""
-        label_width = self.result_label.width()
-        label_height = self.result_label.height()
-        img_height, img_width = self.image.shape[:2]
-
-        x_ratio = img_width / label_width
-        y_ratio = img_height / label_height
-
-        mapped_x = int(x * x_ratio)
-        mapped_y = int(y * y_ratio)
-        return mapped_x, mapped_y
-
-    def mouse_press_event(self, event):
-        if self.drawing_mode and event.button() == Qt.LeftButton:
-            x, y = self.map_to_image_coords(event.pos().x(), event.pos().y())
-            self.last_x, self.last_y = x, y
-
-    def mouse_move_event(self, event):
-        if self.drawing_mode and event.buttons() & Qt.LeftButton:
-            x, y = self.map_to_image_coords(event.pos().x(), event.pos().y())
-            if self.last_x is not None and self.last_y is not None:
-                # 在 mask 上画线
-                cv2.line(self.drawing_mask, (self.last_x, self.last_y), (x, y), 255, 10)
-                self.last_x, self.last_y = x, y
-
-                # 可视化叠加绘制结果
-                overlay = self.image.copy()
-                overlay[self.drawing_mask == 255] = [0, 255, 0]  # 绿色表示前景
-                self.result_label.setPixmap(cv2_to_qpixmap(overlay))
-
     def update_result_label(self):
         if self.image is None:
             return
@@ -425,18 +391,6 @@ class MainWindow(QWidget):
 
             self.result_label.setPixmap(cv2_to_qpixmap(preview))
 
-    # 鼠标事件处理⬆
 
-    def confirm_drawing(self):
-        if self.drawing_mask is None:
-            QMessageBox.warning(self, "提示", "没有绘制任何内容")
-            return
-
-        self.latest_binary = self.drawing_mask.copy()
-        self.mask_label.setPixmap(cv2_to_qpixmap(self.latest_binary))
-        self.drawing_mode = False
-        self.btn_confirm_draw.setEnabled(False)
-        self.result_label.setText("已应用绘制的蒙版")
-        self.update_result_label()
 
 
