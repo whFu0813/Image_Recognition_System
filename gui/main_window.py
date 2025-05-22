@@ -8,6 +8,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 from core import file_io, segmentation, recognition_edit
 from core.file_io import read_image
+from gui.sticker_window import StickerWindow
 from gui.ui_utils import cv2_to_qpixmap
 from gui.draw_mask_window import DrawMaskWindow
 
@@ -26,6 +27,8 @@ class MainWindow(QWidget):
         self.drawing_mode = False  # 绘制蒙版模式
         self.drawing_mask = None
         self.last_x, self.last_y = None, None  # 绘制中存储上次鼠标坐标
+        self.draw_win = None
+        self.sticker_win = None
 
         # 为实现贴纸添加的拖拽
         self.dragging = False
@@ -107,7 +110,7 @@ class MainWindow(QWidget):
         self.mask_edit_combo.addItems(["反转 Mask", "去除小区域"])
 
         self.bg_edit_combo = QComboBox()
-        self.bg_edit_combo.addItems(["替换背景", "模糊背景", "绘制蒙版"])
+        self.bg_edit_combo.addItems(["替换背景", "模糊背景", "绘制蒙版", "贴纸拖动"])
 
         self.display_mode_combo = QComboBox()
         self.display_mode_combo.addItems(["分割结果显示", "Mask图"])
@@ -355,9 +358,25 @@ class MainWindow(QWidget):
                     self.update_result_label()
                     QMessageBox.information(self, "提示", "蒙版已更新")
 
-                draw_win = DrawMaskWindow(self.image, self.latest_binary, receive_updated_mask)
-                draw_win.setAttribute(Qt.WA_DeleteOnClose)  # 关闭后自动删除
-                draw_win.show()
+                self.draw_win = DrawMaskWindow(self.image, self.latest_binary, receive_updated_mask)
+                self.draw_win.setAttribute(Qt.WA_DeleteOnClose)  # 关闭后自动删除
+                self.draw_win.show()
+
+            elif method == "贴纸拖动":
+                if self.image is None or self.latest_binary is None:
+                    QMessageBox.warning(self, "提示", "请先加载图像并生成Mask")
+                    return
+
+                # 回调函数，接收贴图处理后的结果图像
+                def receive_sticker_result(new_image):
+                    self.result = new_image
+                    self.result_label.setPixmap(cv2_to_qpixmap(self.result))
+                    QMessageBox.information(self, "提示", "贴图操作已完成")
+
+                self.sticker_win = StickerWindow(self.image, self.latest_binary, receive_sticker_result)
+                self.sticker_win.setAttribute(Qt.WA_DeleteOnClose)
+                self.sticker_win.show()
+
 
             else:
                 QMessageBox.warning(self, "错误", "未知背景编辑方法")
