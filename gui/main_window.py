@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import (
     QWidget, QLabel, QPushButton, QVBoxLayout, QComboBox, QSlider,
     QFileDialog, QHBoxLayout, QMessageBox, QScrollArea, QSplitter, QSizePolicy
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from core import file_io, segmentation, recognition_edit
 from core.file_io import read_image
 from gui.sticker_window import StickerWindow
@@ -21,6 +21,8 @@ class MainWindow(QWidget):
         self.resize(1600, 1000)
 
         self.image = None
+        self.cap = None
+        self.timer = None
         self.mask = None
         self.result = None
         self.latest_binary = None  # 用于编辑阶段的mask/分割结果
@@ -77,6 +79,11 @@ class MainWindow(QWidget):
 
         self.btn_open = QPushButton("打开图像")
         self.btn_open.clicked.connect(self.open_image)
+        self.btn_camera = QPushButton("打开摄像头")
+        self.btn_camera.clicked.connect(self.open_camera)
+        self.btn_capture = QPushButton("抓拍图像")
+        self.btn_capture.clicked.connect(self.capture_frame)
+        self.btn_capture.setEnabled(False)  # 打开摄像头后才可抓拍
         self.btn_edit = QPushButton("应用目标抠图")
         self.btn_edit.clicked.connect(self.edit_target)
         self.export_transparent_btn = QPushButton("导出透明背景图像")
@@ -118,6 +125,8 @@ class MainWindow(QWidget):
 
         # 基本操作行
         top_btn_layout = QHBoxLayout()
+        top_btn_layout.addWidget(self.btn_camera)
+        top_btn_layout.addWidget(self.btn_capture)
         top_btn_layout.addWidget(self.btn_open)
         top_btn_layout.addWidget(self.btn_edit)
         top_btn_layout.addWidget(self.export_transparent_btn)
@@ -162,6 +171,61 @@ class MainWindow(QWidget):
         layout.addLayout(morph_layout)
 
         self.setLayout(layout)
+
+    def open_camera(self):
+        if self.cap is not None:
+            # 如果已打开，则关闭摄像头
+            self.cap.release()
+            self.cap = None
+            if self.timer:
+                self.timer.stop()
+            self.btn_camera.setText("打开摄像头")
+            self.btn_capture.setEnabled(False)
+            return
+
+        # 打开摄像头
+        self.cap = cv2.VideoCapture(0)
+        if not self.cap.isOpened():
+            QMessageBox.critical(self, "错误", "无法打开摄像头")
+            self.cap = None
+            return
+
+        self.btn_camera.setText("关闭摄像头")
+        self.btn_capture.setEnabled(True)
+
+        # 启动定时器预览图像
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update_camera_frame)
+        self.timer.start(30)
+
+    def update_camera_frame(self):
+        if self.cap is None:
+            return
+        ret, frame = self.cap.read()
+        if not ret:
+            return
+        self.image_label.setPixmap(cv2_to_qpixmap(frame))
+
+    def capture_frame(self):
+        if self.cap is None:
+            return
+
+        ret, frame = self.cap.read()
+        if not ret:
+            QMessageBox.warning(self, "错误", "抓拍失败")
+            return
+
+        # 停止摄像头并清理资源
+        self.timer.stop()
+        self.cap.release()
+        self.cap = None
+        self.btn_camera.setText("打开摄像头")
+        self.btn_capture.setEnabled(False)
+
+        # 保存并显示图像
+        self.image = frame.copy()
+        self.image_label.setPixmap(cv2_to_qpixmap(self.image))
+        QMessageBox.information(self, "提示", "图像抓拍成功，可进行处理")
 
     def open_image(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "选择图像", "", "Image Files (*.png *.jpg *.bmp)")
