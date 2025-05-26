@@ -94,6 +94,8 @@ class MainWindow(QWidget):
         self.btn_morph.clicked.connect(self.apply_morphology)
         self.btn_mask = QPushButton("生成 Mask")
         self.btn_mask.clicked.connect(self.generate_mask)
+        self.btn_feature = QPushButton("特征测量")
+        self.btn_feature.clicked.connect(self.measure_features)
         self.btn_edit_mask = QPushButton("Mask处理")
         self.btn_edit_mask.clicked.connect(self.edit_mask)
         self.btn_edit_bg = QPushButton("背景处理")
@@ -134,6 +136,7 @@ class MainWindow(QWidget):
         top_btn_layout.addWidget(QLabel("分割方式："))
         top_btn_layout.addWidget(self.segment_combo)
         top_btn_layout.addWidget(self.btn_mask)
+        top_btn_layout.addWidget(self.btn_feature)
 
         # 编辑操作行
         edit_btn_layout = QHBoxLayout()
@@ -368,6 +371,24 @@ class MainWindow(QWidget):
         self.mask = recognition_edit.create_mask_image(binary)
         self.mask_label.setPixmap(cv2_to_qpixmap(self.mask))
         self.update_result_label()
+
+    def measure_features(self):
+        if self.latest_binary is None:
+            QMessageBox.warning(self, "提示", "请先生成或处理二值图像")
+            return
+
+        results = recognition_edit.measure_features(self.latest_binary)
+
+        if not results:
+            QMessageBox.information(self, "提示", "未检测到目标区域")
+            return
+
+        # 将结果格式化为字符串
+        text = "\n".join([
+            f"面积: {r['area']}, 周长: {r['perimeter']}, 重心: ({r['centroid'][0]:.2f}, {r['centroid'][1]:.2f})"
+            for r in results
+        ])
+        QMessageBox.information(self, "特征测量结果", text)
 
     def edit_background(self):
         try:

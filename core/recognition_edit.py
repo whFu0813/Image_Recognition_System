@@ -20,3 +20,19 @@ def edit_image(original, mask):
     edited = original.copy()
     edited[mask == 0] = [255, 255, 255]
     return edited
+
+def measure_features(binary_image):
+    # 特征测量
+    contours, _ = cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    results = []
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        perimeter = cv2.arcLength(contour, True)
+        M = cv2.moments(contour)
+        if M["m00"] != 0:
+            cx = M["m10"] / M["m00"]
+            cy = M["m01"] / M["m00"]
+        else:
+            cx, cy = 0, 0
+        results.append({"area": area, "perimeter": perimeter, "centroid": (cx, cy)})
+    return results
