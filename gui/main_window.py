@@ -428,6 +428,8 @@ class MainWindow(QWidget):
                 self.result_label.setPixmap(cv2_to_qpixmap(self.result))
 
             elif method == "绘制蒙版":
+                source_img = self.result.copy() if self.result is not None else self.image.copy()
+
                 if self.image is None:
                     QMessageBox.warning(self, "错误", "请先加载图像")
                     return
@@ -443,11 +445,13 @@ class MainWindow(QWidget):
                     self.update_result_label()
                     QMessageBox.information(self, "提示", "蒙版已更新")
 
-                self.draw_win = DrawMaskWindow(self.image, self.latest_binary, receive_updated_mask)
+                self.draw_win = DrawMaskWindow(source_img, self.latest_binary, receive_updated_mask)
                 self.draw_win.setAttribute(Qt.WA_DeleteOnClose)  # 关闭后自动删除
                 self.draw_win.show()
 
             elif method == "贴纸拖动":
+                source_img = self.result.copy() if self.result is not None else self.image.copy()
+
                 if self.image is None or self.latest_binary is None:
                     QMessageBox.warning(self, "提示", "请先加载图像并生成Mask")
                     return
@@ -458,7 +462,7 @@ class MainWindow(QWidget):
                     self.result_label.setPixmap(cv2_to_qpixmap(self.result))
                     QMessageBox.information(self, "提示", "贴图操作已完成")
 
-                self.sticker_win = StickerWindow(self.image, self.latest_binary, receive_sticker_result)
+                self.sticker_win = StickerWindow(source_img, self.latest_binary, receive_sticker_result)
                 self.sticker_win.setAttribute(Qt.WA_DeleteOnClose)
                 self.sticker_win.show()
 
